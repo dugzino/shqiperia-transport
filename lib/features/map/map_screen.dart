@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 
+import '../../core/location/location_scope.dart';
 import '../../core/theme/app_colors.dart';
 import '../../data/models/city.dart';
 import '../../data/models/transit_line.dart';
@@ -36,6 +37,19 @@ class _MapScreenState extends State<MapScreen> {
       _selectedLine = null;
     });
     _mapController.move(city.center, 13);
+  }
+
+  Future<void> _goToUser() async {
+    final location = LocationScope.maybeOf(context);
+    if (location == null) return;
+    if (!location.hasFix) {
+      await location.requestAccess();
+    }
+    if (!mounted) return;
+    final pos = location.position;
+    if (pos != null) {
+      _mapController.move(pos, 15);
+    }
   }
 
   void _selectLine(TransitLine? line) {
@@ -104,7 +118,55 @@ class _MapScreenState extends State<MapScreen> {
       ),
     );
 
+    final location = LocationScope.maybeOf(context);
+    final userPosition = location?.position;
+    if (userPosition != null) {
+      for (final nearby in _repo.nearbyStops(userPosition, limit: 8)) {
+        markers.add(
+          Marker(
+            point: nearby.stop.location,
+            width: 36,
+            height: 36,
+            alignment: Alignment.topCenter,
+            child: const Icon(
+              Icons.directions_bus_filled_rounded,
+              color: AppColors.secondary,
+              size: 28,
+            ),
+          ),
+        );
+      }
+      markers.add(
+        Marker(
+          point: userPosition,
+          width: 22,
+          height: 22,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: const Color(0xFF2563EB),
+              shape: BoxShape.circle,
+              border: Border.all(color: Colors.white, width: 3),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF2563EB).withValues(alpha: 0.35),
+                  blurRadius: 10,
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
+      floatingActionButton: Padding(
+        padding: const EdgeInsets.only(bottom: 108),
+        child: FloatingActionButton.small(
+          onPressed: _goToUser,
+          tooltip: 'My location',
+          child: const Icon(Icons.my_location_rounded),
+        ),
+      ),
       body: Stack(
         children: [
           FlutterMap(
@@ -121,7 +183,7 @@ class _MapScreenState extends State<MapScreen> {
             children: [
               TileLayer(
                 urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                userAgentPackageName: 'com.dugzino.kosova_transit',
+                userAgentPackageName: 'com.dugzino.soar_albania',
               ),
               PolylineLayer(polylines: polylines),
               MarkerLayer(markers: markers),

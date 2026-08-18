@@ -289,5 +289,23 @@ abstract final class SampleData {
       location: LatLng(42.2090, 20.7350),
       lineIds: ['pz-2'],
     ),
+    const Stop(
+      id: 'pe-qendra',
+      name: 'Pejë Qendra',
+      location: LatLng(42.6593, 20.2883),
+      lineIds: ['pe-1'],
+    ),
+    const Stop(
+      id: 'du-port',
+      name: 'Porti i Durrësit',
+      location: LatLng(41.3100, 19.4500),
+      lineIds: ['du-1', 'tr-ic-durres'],
+    ),
+    const Stop(
+      id: 'sh-qendra',
+      name: 'Shkodër Qendra',
+      location: LatLng(42.0683, 19.5126),
+      lineIds: ['sh-1'],
+    ),
   ];
 }
