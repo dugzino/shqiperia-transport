@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <rect width="1024" height="1024" fill="#0B3D91"/>
+  <!-- Front-facing city bus, kept inside the adaptive-icon safe zone. -->
+  <g fill="none">
+    <rect x="268" y="326" width="488" height="372" rx="72" fill="#FFFFFF"/>
+    <rect x="268" y="534" width="488" height="32" fill="#E41E24"/>
+    <rect x="316" y="370" width="392" height="140" rx="32" fill="#0B3D91"/>
+    <circle cx="356" cy="608" r="22" fill="#F5C518"/>
+    <circle cx="668" cy="608" r="22" fill="#F5C518"/>
+  </g>
+</svg>
