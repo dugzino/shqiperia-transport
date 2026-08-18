@@ -10,5 +10,5 @@ void main() {
       statusBarColor: Colors.transparent,
     ),
   );
-  runApp(const KosovaTransitApp());
+  runApp(const SoarAlbaniaApp());
 }

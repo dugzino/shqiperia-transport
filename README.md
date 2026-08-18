@@ -1,4 +1,4 @@
-# Kosova Transit
+# Soar Albania
 
 Mobile app for public transportation across **Kosovo** and **Albania**.
 

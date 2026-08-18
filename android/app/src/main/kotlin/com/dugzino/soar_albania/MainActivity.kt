@@ -1,4 +1,4 @@
-package com.dugzino.kosova_transit
+package com.dugzino.soar_albania
 
 import io.flutter.embedding.android.FlutterActivity
 

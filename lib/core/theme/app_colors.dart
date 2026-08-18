@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-/// Brand palette for Kosova Transit — deep transit blue with warm accent.
+/// Brand palette for Soar Albania — deep transit blue with warm accent.
 abstract final class AppColors {
   static const Color primary = Color(0xFF0B3D91);
   static const Color primaryLight = Color(0xFF1E5BB8);

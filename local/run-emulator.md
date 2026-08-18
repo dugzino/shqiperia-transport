@@ -32,7 +32,7 @@ adb shell getprop sys.boot_completed   # should print 1
 From the repo root:
 
 ```bash
-cd /home/dugzino/Development/Repositories/Dugzino/kosova-transit
+cd /home/dugzino/Development/Repositories/Dugzino/shqiperia-transport
 flutter run -d emulator-5554
 ```
 
@@ -43,7 +43,7 @@ If the emulator is the only Android device, `flutter run` is enough.
 Flutter can launch the AVD for you:
 
 ```bash
-cd /home/dugzino/Development/Repositories/Dugzino/kosova-transit
+cd /home/dugzino/Development/Repositories/Dugzino/shqiperia-transport
 flutter emulators --launch Medium_Phone_API_36.1
 # wait for boot, then:
 flutter run
