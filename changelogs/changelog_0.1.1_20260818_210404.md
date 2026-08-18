@@ -30,7 +30,7 @@
 
 ## Technical notes
 
-- Flutter package **`soar_albania`**; Android `com.dugzino.soar_albania`; iOS `com.dugzino.soarAlbania`
+- Flutter package **`soar_albania`**; Android `com.dugzino.shqiperia_transport` (Play Console); iOS `com.dugzino.soarAlbania`
 - **`SoarAlbaniaApp`** is the root widget
 - **`LocationController`** / **`LocationScope`** — `geolocator`; request on first frame; denied / forever / services-off banners
 - **`TransitRepository.nearbyStops`** / **`nearestCity`**; **`TransitSchedule`** headway timetable (05:00–23:00) until GTFS

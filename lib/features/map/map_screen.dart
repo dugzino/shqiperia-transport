@@ -183,7 +183,7 @@ class _MapScreenState extends State<MapScreen> {
             children: [
               TileLayer(
                 urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                userAgentPackageName: 'com.dugzino.soar_albania',
+                userAgentPackageName: 'com.dugzino.shqiperia_transport',
               ),
               PolylineLayer(polylines: polylines),
               MarkerLayer(markers: markers),
