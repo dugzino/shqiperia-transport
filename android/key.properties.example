@@ -1,0 +1,4 @@
+storePassword=replace-me
+keyPassword=replace-me
+keyAlias=soar-albania-upload
+storeFile=/home/dugzino/soar-albania-upload-keystore.jks
