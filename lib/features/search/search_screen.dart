@@ -102,7 +102,10 @@ class _SearchScreenState extends State<SearchScreen> {
                         leading: CircleAvatar(
                           backgroundColor:
                               AppColors.primary.withValues(alpha: 0.1),
-                          child: Text(city.flag),
+                          child: Icon(
+                            Icons.location_city_rounded,
+                            color: AppColors.primary,
+                          ),
                         ),
                         title: Text(
                           city.name,

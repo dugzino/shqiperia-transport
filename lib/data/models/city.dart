@@ -20,12 +20,7 @@ class City {
   final int lineCount;
 
   String get countryLabel => switch (country) {
-    Country.kosovo => 'Kosovo',
+    Country.kosovo => 'Kosova',
     Country.albania => 'Albania',
-  };
-
-  String get flag => switch (country) {
-    Country.kosovo => '🇽🇰',
-    Country.albania => '🇦🇱',
   };
 }

@@ -5,6 +5,12 @@ import 'package:google_fonts/google_fonts.dart';
 import 'app_colors.dart';
 
 abstract final class AppTheme {
+  static const SystemUiOverlayStyle statusBar = SystemUiOverlayStyle(
+    statusBarColor: AppColors.primary,
+    statusBarIconBrightness: Brightness.light,
+    statusBarBrightness: Brightness.dark,
+  );
+
   static ThemeData get light {
     final base = ThemeData(
       useMaterial3: true,
@@ -27,15 +33,19 @@ abstract final class AppTheme {
       ),
       appBarTheme: AppBarTheme(
         elevation: 0,
-        scrolledUnderElevation: 0.5,
+        scrolledUnderElevation: 0,
         centerTitle: false,
-        backgroundColor: AppColors.surface,
-        foregroundColor: AppColors.textPrimary,
-        systemOverlayStyle: SystemUiOverlayStyle.dark,
+        toolbarHeight: 72,
+        backgroundColor: AppColors.primary,
+        foregroundColor: AppColors.textOnPrimary,
+        surfaceTintColor: Colors.transparent,
+        iconTheme: const IconThemeData(color: AppColors.textOnPrimary),
+        actionsIconTheme: const IconThemeData(color: AppColors.textOnPrimary),
+        systemOverlayStyle: statusBar,
         titleTextStyle: GoogleFonts.plusJakartaSans(
           fontSize: 20,
           fontWeight: FontWeight.w700,
-          color: AppColors.textPrimary,
+          color: AppColors.textOnPrimary,
         ),
       ),
       cardTheme: CardThemeData(
@@ -132,14 +142,19 @@ abstract final class AppTheme {
       textTheme: GoogleFonts.plusJakartaSansTextTheme(base.textTheme),
       appBarTheme: AppBarTheme(
         elevation: 0,
-        scrolledUnderElevation: 0.5,
+        scrolledUnderElevation: 0,
         centerTitle: false,
-        backgroundColor: AppColors.surfaceDark,
-        systemOverlayStyle: SystemUiOverlayStyle.light,
+        toolbarHeight: 72,
+        backgroundColor: AppColors.primary,
+        foregroundColor: AppColors.textOnPrimary,
+        surfaceTintColor: Colors.transparent,
+        iconTheme: const IconThemeData(color: AppColors.textOnPrimary),
+        actionsIconTheme: const IconThemeData(color: AppColors.textOnPrimary),
+        systemOverlayStyle: statusBar,
         titleTextStyle: GoogleFonts.plusJakartaSans(
           fontSize: 20,
           fontWeight: FontWeight.w700,
-          color: Colors.white,
+          color: AppColors.textOnPrimary,
         ),
       ),
       cardTheme: CardThemeData(

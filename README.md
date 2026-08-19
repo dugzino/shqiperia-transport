@@ -1,6 +1,6 @@
 # Soar Albania
 
-Mobile app for public transportation across **Kosovo** and **Albania**.
+Mobile app for public transportation across **Kosova** and **Albania**.
 
 Built with Flutter (Android + iOS). Web will live in a separate codebase later.
 
