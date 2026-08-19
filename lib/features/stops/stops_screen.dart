@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:latlong2/latlong.dart';
 
 import '../../core/favorites/favorites_scope.dart';
 import '../../core/location/location_controller.dart';
 import '../../core/location/location_scope.dart';
 import '../../core/theme/app_colors.dart';
-import '../../data/models/transit_line.dart';
+import '../../data/models/nearby_stop.dart';
+import '../../data/models/stop.dart';
 import '../../data/models/vehicle_filter.dart';
 import '../../data/repositories/transit_repository.dart';
 import '../../data/schedule.dart';
@@ -15,16 +17,15 @@ import '../widgets/line_badge.dart';
 import '../widgets/section_header.dart';
 import '../widgets/status_banner.dart';
 import '../widgets/vehicle_tab_bar.dart';
-import 'line_detail_screen.dart';
 
-class LinesScreen extends StatefulWidget {
-  const LinesScreen({super.key});
+class StopsScreen extends StatefulWidget {
+  const StopsScreen({super.key});
 
   @override
-  State<LinesScreen> createState() => _LinesScreenState();
+  State<StopsScreen> createState() => _StopsScreenState();
 }
 
-class _LinesScreenState extends State<LinesScreen> {
+class _StopsScreenState extends State<StopsScreen> {
   static const _repo = TransitRepository();
 
   @override
@@ -32,19 +33,19 @@ class _LinesScreenState extends State<LinesScreen> {
     final location = LocationScope.maybeOf(context);
     final favorites = FavoritesScope.maybeOf(context);
     final from = location?.position;
-    final favourite = _repo.favouriteLinesMatching(
-      favorites?.lineIds ?? const [],
+    final favourite = _repo.favouriteStopsMatching(
+      favorites?.stopIds ?? const [],
       VehicleFilter.all,
       from: from,
     );
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Lines')),
+      appBar: AppBar(title: const Text('Stops')),
       body: ListView(
         padding: const EdgeInsets.only(bottom: 24),
         children: [
           SectionHeader(
-            title: 'Favourite lines',
+            title: 'Favourite stops',
             trailing: IconButton(
               tooltip: 'Edit favourites',
               onPressed: () => EditFavouritesScreen.open(context),
@@ -56,39 +57,41 @@ class _LinesScreenState extends State<LinesScreen> {
             child: favourite.isEmpty
                 ? const StatusBanner(
                     icon: Icons.star_outline_rounded,
-                    title: 'No favourite lines yet',
-                    body: 'Tap edit to pin the lines you take often.',
+                    title: 'No favourite stops yet',
+                    body: 'Tap edit to pin the stops you use often.',
                   )
                 : ExpandablePreview(
                     itemCount: favourite.length,
                     itemBuilder: (context, index) {
-                      final line = favourite[index];
-                      return _LineCard(
-                        line: line,
-                        meters: from == null
-                            ? null
-                            : _repo.closestStopOnLine(line.id, from)?.meters,
-                      );
+                      final stop = favourite[index];
+                      final meters = from == null
+                          ? null
+                          : const Distance().as(
+                              LengthUnit.Meter,
+                              from,
+                              stop.location,
+                            );
+                      return _StopCard(stop: stop, meters: meters);
                     },
                   ),
           ),
-          _NearbyLinesSection(location: location),
+          _NearbyStopsSection(location: location),
         ],
       ),
     );
   }
 }
 
-class _NearbyLinesSection extends StatefulWidget {
-  const _NearbyLinesSection({required this.location});
+class _NearbyStopsSection extends StatefulWidget {
+  const _NearbyStopsSection({required this.location});
 
   final LocationController? location;
 
   @override
-  State<_NearbyLinesSection> createState() => _NearbyLinesSectionState();
+  State<_NearbyStopsSection> createState() => _NearbyStopsSectionState();
 }
 
-class _NearbyLinesSectionState extends State<_NearbyLinesSection>
+class _NearbyStopsSectionState extends State<_NearbyStopsSection>
     with SingleTickerProviderStateMixin {
   static const _repo = TransitRepository();
   late final TabController _tabs;
@@ -111,10 +114,10 @@ class _NearbyLinesSectionState extends State<_NearbyLinesSection>
   VehicleFilter get _filter => VehicleFilter.values[_tabs.index];
   LocationController? get location => widget.location;
 
-  List<({TransitLine line, double meters})> get nearby {
+  List<NearbyStop> get nearby {
     final from = location?.position;
     if (from == null) return const [];
-    return _repo.nearbyLines(from, filter: _filter);
+    return _repo.nearbyStopsMatching(from, _filter);
   }
 
   @override
@@ -125,9 +128,9 @@ class _NearbyLinesSectionState extends State<_NearbyLinesSection>
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         SectionHeader(
-          title: 'Nearby lines (<1km)',
+          title: 'Nearby stops (<1km)',
           trailing: IconButton(
-            tooltip: 'Refresh nearby lines',
+            tooltip: 'Refresh nearby stops',
             onPressed: searching || location == null
                 ? null
                 : location!.requestAccess,
@@ -154,8 +157,8 @@ class _NearbyLinesSectionState extends State<_NearbyLinesSection>
     if (loc == null) {
       return const StatusBanner(
         icon: Icons.near_me_rounded,
-        title: 'See nearby lines',
-        body: 'Allow location to see lines with a stop within 1 km.',
+        title: 'See nearby stops',
+        body: 'Allow location to see stops within 1 km.',
       );
     }
 
@@ -164,7 +167,7 @@ class _NearbyLinesSectionState extends State<_NearbyLinesSection>
         itemCount: nearby.length,
         itemBuilder: (context, index) {
           final item = nearby[index];
-          return _LineCard(line: item.line, meters: item.meters);
+          return _StopCard(stop: item.stop, meters: item.meters);
         },
       );
     }
@@ -172,16 +175,16 @@ class _NearbyLinesSectionState extends State<_NearbyLinesSection>
     if (loc.status == LocationStatus.granted && nearby.isEmpty) {
       return const StatusBanner(
         icon: Icons.near_me_disabled_rounded,
-        title: 'No lines nearby',
-        body: 'Nothing in this category has a stop within 1 km.',
+        title: 'No stops nearby',
+        body: 'Nothing in this category is within 1 km.',
       );
     }
 
     if (loc.status == LocationStatus.requesting) {
       return const StatusBanner(
         icon: Icons.my_location_rounded,
-        title: 'Finding nearby lines…',
-        body: 'Using your location for the closest lines.',
+        title: 'Finding nearby stops…',
+        body: 'Using your location for the closest stops.',
       );
     }
 
@@ -189,12 +192,12 @@ class _NearbyLinesSectionState extends State<_NearbyLinesSection>
     final disabled = loc.status == LocationStatus.disabled;
     return StatusBanner(
       icon: Icons.near_me_rounded,
-      title: disabled ? 'Turn on location' : 'See nearby lines',
+      title: disabled ? 'Turn on location' : 'See nearby stops',
       body: disabled
-          ? 'Location services are off. Turn them on to see nearby lines.'
+          ? 'Location services are off. Turn them on to see nearby stops.'
           : deniedForever
-              ? 'Location is blocked. Enable it in settings to see nearby lines.'
-              : 'Allow location to see lines with a stop within 1 km.',
+              ? 'Location is blocked. Enable it in settings to see nearby stops.'
+              : 'Allow location to see stops within 1 km.',
       actionLabel: disabled || deniedForever ? 'Open settings' : 'Allow location',
       onAction: () {
         if (disabled || deniedForever) {
@@ -207,52 +210,63 @@ class _NearbyLinesSectionState extends State<_NearbyLinesSection>
   }
 }
 
-class _LineCard extends StatelessWidget {
-  const _LineCard({required this.line, this.meters});
+class _StopCard extends StatelessWidget {
+  const _StopCard({required this.stop, this.meters});
 
-  final TransitLine line;
+  final Stop stop;
   final double? meters;
 
   @override
   Widget build(BuildContext context) {
     const repo = TransitRepository();
-    final city = repo.getCity(line.cityId);
+    final lines = [
+      for (final id in stop.lineIds) ?repo.getLine(id),
+    ];
     return Card(
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-        leading: LineBadge(line: line),
+        leading: const CircleAvatar(
+          backgroundColor: AppColors.secondarySoft,
+          child: Icon(
+            Icons.hail_rounded,
+            color: AppColors.secondary,
+            size: 20,
+          ),
+        ),
         title: Text(
-          line.name,
+          stop.name,
           style: const TextStyle(fontWeight: FontWeight.w700),
         ),
         subtitle: Padding(
-          padding: const EdgeInsets.only(top: 4),
-          child: Text(
-            [
-              if (city != null) city.name,
-              line.modeLabel,
-              if (meters != null) TransitSchedule.distanceLabel(meters!),
-            ].join(' · '),
-            style: const TextStyle(
-              color: AppColors.textSecondary,
-              fontSize: 13,
-            ),
+          padding: const EdgeInsets.only(top: 6),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                [
+                  if (meters != null) TransitSchedule.distanceLabel(meters!),
+                  '${stop.lineIds.length} line(s)',
+                ].join(' · '),
+                style: const TextStyle(
+                  color: AppColors.textSecondary,
+                  fontSize: 13,
+                ),
+              ),
+              if (lines.isNotEmpty) ...[
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    for (final line in lines.take(6))
+                      LineBadge(line: line, compact: true),
+                  ],
+                ),
+              ],
+            ],
           ),
         ),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            FavoriteStarButton(lineId: line.id),
-            const Icon(Icons.chevron_right_rounded),
-          ],
-        ),
-        onTap: () {
-          Navigator.of(context).push(
-            MaterialPageRoute<void>(
-              builder: (_) => LineDetailScreen(lineId: line.id),
-            ),
-          );
-        },
+        trailing: FavoriteStarButton(stopId: stop.id),
       ),
     );
   }
