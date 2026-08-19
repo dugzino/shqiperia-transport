@@ -23,6 +23,24 @@ class FavoritesController extends ChangeNotifier {
   UnmodifiableListView<String> get stopIds => UnmodifiableListView(_stopIds);
   UnmodifiableListView<SavedAddress> get addresses =>
       UnmodifiableListView(_addresses);
+
+  /// Home and Work always come first, even when the user has not set them.
+  List<SavedAddress> get displayAddresses {
+    SavedAddress slot(String id, String name) {
+      for (final address in _addresses) {
+        if (address.id == id) return address;
+      }
+      return SavedAddress(id: id, name: name);
+    }
+
+    return [
+      slot(SavedAddress.homeId, 'Home'),
+      slot(SavedAddress.workId, 'Work'),
+      for (final address in _addresses)
+        if (!address.isPreset) address,
+    ];
+  }
+
   bool get isLoaded => _loaded;
 
   bool contains(String lineId) => _lineIds.contains(lineId);
