@@ -4,6 +4,8 @@ import 'package:soar_albania/core/favorites/favorites_controller.dart';
 import 'package:soar_albania/core/favorites/favorites_scope.dart';
 import 'package:soar_albania/core/theme/app_theme.dart';
 import 'package:soar_albania/features/home/home_screen.dart';
+import 'package:soar_albania/features/lines/lines_screen.dart';
+import 'package:soar_albania/features/stops/stops_screen.dart';
 
 void main() {
   Widget app({FavoritesController? favorites}) {
@@ -34,14 +36,60 @@ void main() {
     await settleRoute(tester);
 
     expect(find.text('Edit favourites'), findsOneWidget);
-    expect(find.text('Favourite lines'), findsWidgets);
-    expect(find.text('Favourite stops'), findsOneWidget);
+    expect(find.text('Lines'), findsWidgets);
+    expect(find.text('Stops'), findsOneWidget);
+    expect(find.text('Places'), findsOneWidget);
     expect(find.text('Add line'), findsOneWidget);
-    expect(find.text('Add stop'), findsOneWidget);
     expect(
       find.text('No favourite lines yet. Add the routes you take often.'),
       findsOneWidget,
     );
+    expect(find.text('Add stop'), findsNothing);
+    expect(find.text('Home'), findsNothing);
+  });
+
+  testWidgets('edit from Lines opens the Lines tab', (tester) async {
+    await tester.pumpWidget(
+      FavoritesScope(
+        controller: FavoritesController()..debugSet(const []),
+        child: MaterialApp(
+          theme: AppTheme.light,
+          home: const LinesScreen(),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    await tester.tap(find.byTooltip('Edit favourites'));
+    await settleRoute(tester);
+
+    expect(find.text('Add line'), findsOneWidget);
+    expect(find.text('Add stop'), findsNothing);
+    expect(
+      find.text('No favourite lines yet. Add the routes you take often.'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('edit from Stops opens the Stops tab', (tester) async {
+    await tester.pumpWidget(
+      FavoritesScope(
+        controller: FavoritesController()..debugSet(const []),
+        child: MaterialApp(
+          theme: AppTheme.light,
+          home: const StopsScreen(),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    await tester.tap(find.byTooltip('Edit favourites'));
+    await settleRoute(tester);
+
+    expect(find.text('Add stop'), findsOneWidget);
+    expect(find.text('Add line'), findsNothing);
     expect(
       find.text('No favourite stops yet. Pin a stop to find it quickly.'),
       findsOneWidget,
@@ -81,6 +129,10 @@ void main() {
 
     await tester.tap(find.byTooltip('Edit favourites'));
     await settleRoute(tester);
+
+    await tester.tap(find.text('Stops'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
 
     await tester.tap(find.text('Add stop'));
     await settleRoute(tester);

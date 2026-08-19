@@ -47,7 +47,10 @@ class _LinesScreenState extends State<LinesScreen> {
             title: 'Favourite lines',
             trailing: IconButton(
               tooltip: 'Edit favourites',
-              onPressed: () => EditFavouritesScreen.open(context),
+              onPressed: () => EditFavouritesScreen.open(
+                context,
+                initialTab: FavouritesTab.lines,
+              ),
               icon: const Icon(Icons.edit_rounded),
             ),
           ),

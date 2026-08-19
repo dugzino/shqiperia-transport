@@ -2,24 +2,82 @@ import 'package:flutter/material.dart';
 
 import '../../core/favorites/favorites_scope.dart';
 import '../../core/theme/app_colors.dart';
+import '../../data/models/saved_address.dart';
 import '../../data/models/stop.dart';
 import '../../data/models/transit_line.dart';
 import '../../data/repositories/transit_repository.dart';
+import '../addresses/save_address_screen.dart';
 import '../widgets/line_badge.dart';
-import '../widgets/section_header.dart';
+import '../widgets/stop_mode_avatar.dart';
 
-class EditFavouritesScreen extends StatelessWidget {
-  const EditFavouritesScreen({super.key});
+enum FavouritesTab { lines, stops, places }
+
+class EditFavouritesScreen extends StatefulWidget {
+  const EditFavouritesScreen({
+    super.key,
+    this.initialTab = FavouritesTab.lines,
+  });
+
+  final FavouritesTab initialTab;
 
   static const _repo = TransitRepository();
 
-  static Future<void> open(BuildContext context) {
+  static Future<void> open(
+    BuildContext context, {
+    FavouritesTab initialTab = FavouritesTab.lines,
+  }) {
     return Navigator.of(context).push(
       MaterialPageRoute<void>(
         fullscreenDialog: true,
-        builder: (_) => const EditFavouritesScreen(),
+        builder: (_) => EditFavouritesScreen(initialTab: initialTab),
       ),
     );
+  }
+
+  @override
+  State<EditFavouritesScreen> createState() => _EditFavouritesScreenState();
+}
+
+class _EditFavouritesScreenState extends State<EditFavouritesScreen>
+    with SingleTickerProviderStateMixin {
+  late final TabController _tabs;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabs = TabController(
+      length: FavouritesTab.values.length,
+      vsync: this,
+      initialIndex: widget.initialTab.index,
+    );
+    _tabs.addListener(() {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _tabs.dispose();
+    super.dispose();
+  }
+
+  FavouritesTab get _currentTab => FavouritesTab.values[_tabs.index];
+
+  String get _addLabel => switch (_currentTab) {
+        FavouritesTab.lines => 'Add line',
+        FavouritesTab.stops => 'Add stop',
+        FavouritesTab.places => 'Add place',
+      };
+
+  void _addCurrent() {
+    switch (_currentTab) {
+      case FavouritesTab.lines:
+        _AddFavouriteLineScreen.open(context);
+      case FavouritesTab.stops:
+        _AddFavouriteStopScreen.open(context);
+      case FavouritesTab.places:
+        SaveAddressScreen.open(context);
+    }
   }
 
   @override
@@ -27,73 +85,125 @@ class EditFavouritesScreen extends StatelessWidget {
     final favorites = FavoritesScope.maybeOf(context);
     final lines = <TransitLine>[
       for (final id in favorites?.lineIds ?? const <String>[])
-        ?_repo.getLine(id),
+        ?EditFavouritesScreen._repo.getLine(id),
     ];
     final stops = <Stop>[
       for (final id in favorites?.stopIds ?? const <String>[])
-        ?_repo.getStop(id),
+        ?EditFavouritesScreen._repo.getStop(id),
     ];
+    final addresses =
+        favorites?.displayAddresses ?? SavedAddress.emptyPresets;
 
     return Scaffold(
       appBar: AppBar(
+        toolbarHeight: 56,
         title: const Text('Edit favourites'),
+        actions: [
+          TextButton(
+            onPressed: _addCurrent,
+            child: Text(
+              _addLabel,
+              style: const TextStyle(
+                color: AppColors.textOnPrimary,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+        bottom: TabBar(
+          controller: _tabs,
+          labelColor: AppColors.textOnPrimary,
+          unselectedLabelColor: AppColors.textOnPrimary.withValues(alpha: 0.7),
+          indicatorColor: AppColors.textOnPrimary,
+          indicatorWeight: 3,
+          dividerColor: Colors.transparent,
+          tabs: const [
+            Tab(text: 'Lines'),
+            Tab(text: 'Stops'),
+            Tab(text: 'Places'),
+          ],
+        ),
       ),
-      body: ListView(
-        padding: const EdgeInsets.only(bottom: 32),
+      body: TabBarView(
+        controller: _tabs,
         children: [
-          SectionHeader(
-            title: 'Favourite lines',
-            actionLabel: 'Add line',
-            onAction: () => _AddFavouriteLineScreen.open(context),
+          _FavouritesList(
+            isEmpty: lines.isEmpty,
+            emptyMessage:
+                'No favourite lines yet. Add the routes you take often.',
+            children: [
+              for (final line in lines)
+                _FavouriteLineTile(
+                  line: line,
+                  cityName: EditFavouritesScreen._repo.getCity(line.cityId)?.name,
+                  onRemove: favorites == null
+                      ? null
+                      : () => favorites.removeLine(line.id),
+                ),
+            ],
           ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-            child: lines.isEmpty
-                ? const _EmptyFavouritesHint(
-                    message: 'No favourite lines yet. Add the routes you take often.',
-                  )
-                : Column(
-                    children: [
-                      for (final line in lines) ...[
-                        _FavouriteLineTile(
-                          line: line,
-                          cityName: _repo.getCity(line.cityId)?.name,
-                          onRemove: favorites == null
-                              ? null
-                              : () => favorites.removeLine(line.id),
-                        ),
-                        const SizedBox(height: 10),
-                      ],
-                    ],
+          _FavouritesList(
+            isEmpty: stops.isEmpty,
+            emptyMessage:
+                'No favourite stops yet. Pin a stop to find it quickly.',
+            children: [
+              for (final stop in stops)
+                _FavouriteStopTile(
+                  stop: stop,
+                  onRemove: favorites == null
+                      ? null
+                      : () => favorites.removeStop(stop.id),
+                ),
+            ],
+          ),
+          _FavouritesList(
+            children: [
+              for (final address in addresses)
+                _SavedAddressTile(
+                  address: address,
+                  onEdit: () => SaveAddressScreen.open(
+                    context,
+                    existing: address,
                   ),
-          ),
-          SectionHeader(
-            title: 'Favourite stops',
-            actionLabel: 'Add stop',
-            onAction: () => _AddFavouriteStopScreen.open(context),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-            child: stops.isEmpty
-                ? const _EmptyFavouritesHint(
-                    message: 'No favourite stops yet. Pin a stop to find it quickly.',
-                  )
-                : Column(
-                    children: [
-                      for (final stop in stops) ...[
-                        _FavouriteStopTile(
-                          stop: stop,
-                          onRemove: favorites == null
-                              ? null
-                              : () => favorites.removeStop(stop.id),
-                        ),
-                        const SizedBox(height: 10),
-                      ],
-                    ],
-                  ),
+                  onClear: favorites == null || !address.isSet
+                      ? null
+                      : () => favorites.removeAddress(address.id),
+                ),
+            ],
           ),
         ],
       ),
+    );
+  }
+}
+
+class _FavouritesList extends StatelessWidget {
+  const _FavouritesList({
+    required this.children,
+    this.isEmpty = false,
+    this.emptyMessage,
+  });
+
+  final List<Widget> children;
+  final bool isEmpty;
+  final String? emptyMessage;
+
+  @override
+  Widget build(BuildContext context) {
+    if (isEmpty && emptyMessage != null) {
+      return ListView(
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+        children: [
+          _EmptyFavouritesHint(message: emptyMessage!),
+        ],
+      );
+    }
+
+    return ListView.separated(
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+      itemCount: children.length,
+      separatorBuilder: (_, _) => const SizedBox(height: 10),
+      itemBuilder: (context, index) => children[index],
     );
   }
 }
@@ -115,6 +225,44 @@ class _EmptyFavouritesHint extends StatelessWidget {
             height: 1.35,
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _SavedAddressTile extends StatelessWidget {
+  const _SavedAddressTile({
+    required this.address,
+    required this.onEdit,
+    this.onClear,
+  });
+
+  final SavedAddress address;
+  final VoidCallback onEdit;
+  final VoidCallback? onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: ListTile(
+        contentPadding: const EdgeInsets.fromLTRB(14, 6, 4, 6),
+        leading: CircleAvatar(
+          backgroundColor: AppColors.secondarySoft,
+          child: Icon(address.icon, color: AppColors.secondary, size: 20),
+        ),
+        title: Text(
+          address.name,
+          style: const TextStyle(fontWeight: FontWeight.w700),
+        ),
+        subtitle: Text(address.subtitle),
+        onTap: onEdit,
+        trailing: onClear == null
+            ? const Icon(Icons.chevron_right_rounded)
+            : IconButton(
+                tooltip: address.isPreset ? 'Clear address' : 'Remove place',
+                onPressed: onClear,
+                icon: const Icon(Icons.remove_circle_outline_rounded),
+              ),
       ),
     );
   }
@@ -145,7 +293,7 @@ class _FavouriteLineTile extends StatelessWidget {
           [
             if (cityName != null) cityName,
             line.modeLabel,
-            'every ${line.frequencyMinutes} min',
+            line.frequencyLabel,
           ].join(' · '),
         ),
         trailing: IconButton(
@@ -172,14 +320,7 @@ class _FavouriteStopTile extends StatelessWidget {
     return Card(
       child: ListTile(
         contentPadding: const EdgeInsets.fromLTRB(14, 6, 4, 6),
-        leading: const CircleAvatar(
-          backgroundColor: AppColors.secondarySoft,
-          child: Icon(
-            Icons.hail_rounded,
-            color: AppColors.secondary,
-            size: 20,
-          ),
-        ),
+        leading: StopModeAvatar.forStop(stop),
         title: Text(
           stop.name,
           style: const TextStyle(fontWeight: FontWeight.w700),
@@ -283,7 +424,7 @@ class _AddFavouriteLineScreenState extends State<_AddFavouriteLineScreen> {
                             [
                               if (city != null) city.name,
                               line.modeLabel,
-                              'every ${line.frequencyMinutes} min',
+                              line.frequencyLabel,
                             ].join(' · '),
                           ),
                           trailing: const Icon(Icons.add_rounded),
@@ -381,14 +522,7 @@ class _AddFavouriteStopScreenState extends State<_AddFavouriteStopScreen> {
                             horizontal: 14,
                             vertical: 6,
                           ),
-                          leading: const CircleAvatar(
-                            backgroundColor: AppColors.secondarySoft,
-                            child: Icon(
-                              Icons.hail_rounded,
-                              color: AppColors.secondary,
-                              size: 20,
-                            ),
-                          ),
+                          leading: StopModeAvatar.forStop(stop),
                           title: Text(
                             stop.name,
                             style: const TextStyle(fontWeight: FontWeight.w700),

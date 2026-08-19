@@ -15,6 +15,7 @@ import '../../data/schedule.dart';
 import '../widgets/favorite_star_button.dart';
 import '../widgets/line_badge.dart';
 import '../widgets/section_header.dart';
+import '../widgets/stop_mode_avatar.dart';
 import '../lines/line_detail_screen.dart';
 import 'edit_favourites_screen.dart';
 
@@ -102,7 +103,10 @@ class _FavouriteLinesSection extends StatelessWidget {
           title: 'Favourite lines',
           trailing: IconButton(
             tooltip: 'Edit favourites',
-            onPressed: () => EditFavouritesScreen.open(context),
+            onPressed: () => EditFavouritesScreen.open(
+              context,
+              initialTab: FavouritesTab.lines,
+            ),
             icon: const Icon(Icons.edit_rounded),
           ),
         ),
@@ -160,11 +164,14 @@ class _FavouriteLineCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final next = TransitSchedule.nextDepartures(line.frequencyMinutes);
+    final next = TransitSchedule.nextDepartures(
+      line.frequencyMinutes,
+      dailyMinutes: line.dailyDepartureMinutes,
+    );
     final subtitleParts = <String>[
       if (city != null) city!.name,
       line.modeLabel,
-      'every ${line.frequencyMinutes} min',
+      line.frequencyLabel,
       if (closest != null)
         '${closest!.stop.name} · ${TransitSchedule.distanceLabel(closest!.meters)}',
     ];
@@ -450,14 +457,7 @@ class _NearbyStopCard extends StatelessWidget {
           children: [
             Row(
               children: [
-                const CircleAvatar(
-                  backgroundColor: AppColors.secondarySoft,
-                  child: Icon(
-                    Icons.hail_rounded,
-                    color: AppColors.secondary,
-                    size: 20,
-                  ),
-                ),
+                StopModeAvatar.forStop(nearby.stop),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
