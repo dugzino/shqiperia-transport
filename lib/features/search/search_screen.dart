@@ -4,6 +4,7 @@ import '../../core/theme/app_colors.dart';
 import '../../data/repositories/transit_repository.dart';
 import '../lines/line_detail_screen.dart';
 import '../widgets/line_badge.dart';
+import '../widgets/stop_mode_avatar.dart';
 
 class SearchScreen extends StatefulWidget {
   const SearchScreen({super.key});
@@ -139,7 +140,7 @@ class _SearchScreenState extends State<SearchScreen> {
                           style: const TextStyle(fontWeight: FontWeight.w700),
                         ),
                         subtitle: Text(
-                          '${line.modeLabel} · every ${line.frequencyMinutes} min',
+                          '${line.modeLabel} · ${line.frequencyLabel}',
                         ),
                         trailing: const Icon(Icons.chevron_right_rounded),
                         onTap: () {
@@ -162,14 +163,7 @@ class _SearchScreenState extends State<SearchScreen> {
                     (stop) => Card(
                       margin: const EdgeInsets.only(bottom: 8),
                       child: ListTile(
-                        leading: const CircleAvatar(
-                          backgroundColor: AppColors.secondarySoft,
-                          child: Icon(
-                            Icons.hail_rounded,
-                            color: AppColors.secondary,
-                            size: 20,
-                          ),
-                        ),
+                        leading: StopModeAvatar.forStop(stop),
                         title: Text(
                           stop.name,
                           style: const TextStyle(fontWeight: FontWeight.w700),

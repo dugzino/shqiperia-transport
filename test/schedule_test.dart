@@ -32,6 +32,60 @@ void main() {
         DateTime(2026, 8, 18, 8, 24),
       ]);
     });
+
+    test('uses Trainkos fixed times for Prishtinë–Pejë', () {
+      const times = [5 * 60 + 32, 7 * 60 + 50, 12 * 60 + 10, 16 * 60 + 30];
+      expect(
+        TransitSchedule.nextDailyDeparture(times, DateTime(2026, 8, 19, 8, 0)),
+        DateTime(2026, 8, 19, 12, 10),
+      );
+      expect(
+        TransitSchedule.nextDailyDeparture(times, DateTime(2026, 8, 19, 17, 0)),
+        DateTime(2026, 8, 20, 5, 32),
+      );
+    });
+  });
+
+  test('sample data includes the Prishtinë–Pejë train', () {
+    const repo = TransitRepository();
+    final line = repo.getLine('pr-train-peje');
+    expect(line, isNotNull);
+    expect(line!.mode.name, 'train');
+    expect(line.frequencyLabel, '2 round trips / day');
+    expect(line.stopSlugs.first, 'rail-prishtine');
+    expect(line.stopSlugs.last, 'rail-peje');
+    expect(repo.getStop('rail-peje')?.name, 'Pejë');
+    expect(repo.getStop('st-hekurudhor')?.lineIds, contains('pr-train-peje'));
+  });
+
+  group('TransitRepository planTrip', () {
+    const repo = TransitRepository();
+
+    test('uses a shared line between two stops on the same route', () {
+      final line = repo.getLine('pr-1')!;
+      final plan = repo.planTrip(
+        from: line.stops.first,
+        to: line.stops.last,
+        destinationLabel: 'Home',
+      );
+
+      expect(plan.destinationLabel, 'Home');
+      expect(plan.legs.any((leg) => leg.line?.id == 'pr-1'), isTrue);
+    });
+
+    test('falls back to a direct walk when no ride connects', () {
+      const from = LatLng(42.6629, 21.1655);
+      const to = LatLng(41.3275, 19.8187);
+      final plan = repo.planTrip(
+        from: from,
+        to: to,
+        destinationLabel: 'Tirana',
+      );
+
+      expect(plan.legs, hasLength(1));
+      expect(plan.legs.single.isTransit, isFalse);
+      expect(plan.legs.single.label, 'To Tirana');
+    });
   });
 
   group('TransitRepository nearby', () {

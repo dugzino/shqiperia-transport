@@ -3,7 +3,15 @@ abstract final class TransitSchedule {
   static const serviceStartHour = 5;
   static const serviceEndHour = 23;
 
-  static DateTime nextDeparture(int frequencyMinutes, [DateTime? now]) {
+  static DateTime nextDeparture(
+    int frequencyMinutes, [
+    DateTime? now,
+    List<int>? dailyMinutes,
+  ]) {
+    if (dailyMinutes != null && dailyMinutes.isNotEmpty) {
+      return nextDailyDeparture(dailyMinutes, now);
+    }
+
     final current = now ?? DateTime.now();
     final freq = frequencyMinutes <= 0 ? 15 : frequencyMinutes;
     var start = DateTime(
@@ -43,15 +51,30 @@ abstract final class TransitSchedule {
     int frequencyMinutes, {
     int count = 2,
     DateTime? now,
+    List<int>? dailyMinutes,
   }) {
     final result = <DateTime>[];
     var cursor = now ?? DateTime.now();
     for (var i = 0; i < count; i++) {
-      final next = nextDeparture(frequencyMinutes, cursor);
+      final next = nextDeparture(frequencyMinutes, cursor, dailyMinutes);
       result.add(next);
       cursor = next.add(const Duration(milliseconds: 1));
     }
     return result;
+  }
+
+  static DateTime nextDailyDeparture(
+    List<int> minutesFromMidnight, [
+    DateTime? now,
+  ]) {
+    final current = now ?? DateTime.now();
+    final sorted = [...minutesFromMidnight]..sort();
+    final startOfDay = DateTime(current.year, current.month, current.day);
+    for (final minutes in sorted) {
+      final at = startOfDay.add(Duration(minutes: minutes));
+      if (!at.isBefore(current)) return at;
+    }
+    return startOfDay.add(Duration(days: 1, minutes: sorted.first));
   }
 
   static String formatTime(DateTime time) {

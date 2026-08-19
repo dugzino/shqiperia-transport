@@ -15,6 +15,8 @@ class TransitLine {
     this.stopSlugs = const [],
     this.destination,
     this.frequencyMinutes = 20,
+    this.dailyDepartureMinutes = const [],
+    this.frequencyLabelOverride,
   });
 
   final String id;
@@ -27,6 +29,19 @@ class TransitLine {
   final List<String> stopSlugs;
   final String? destination;
   final int frequencyMinutes;
+
+  /// Minutes from midnight for fixed daily trips. Empty means headway-based.
+  final List<int> dailyDepartureMinutes;
+  final String? frequencyLabelOverride;
+
+  String get frequencyLabel {
+    if (frequencyLabelOverride != null) return frequencyLabelOverride!;
+    if (dailyDepartureMinutes.isNotEmpty) {
+      final n = dailyDepartureMinutes.length;
+      return n == 1 ? '1 trip / day' : '$n trips / day';
+    }
+    return 'every $frequencyMinutes min';
+  }
 
   String get modeLabel => switch (mode) {
     TransitMode.bus => 'Bus',

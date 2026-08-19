@@ -127,7 +127,7 @@ class LineDetailScreen extends StatelessWidget {
                     ),
                     _InfoChip(
                       icon: Icons.schedule_rounded,
-                      label: 'Every ${line.frequencyMinutes} min',
+                      label: line.frequencyLabel,
                     ),
                     if (line.destination != null)
                       _InfoChip(

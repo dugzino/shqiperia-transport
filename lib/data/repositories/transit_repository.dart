@@ -4,6 +4,7 @@ import '../models/city.dart';
 import '../models/nearby_stop.dart';
 import '../models/stop.dart';
 import '../models/transit_line.dart';
+import '../models/trip_plan.dart';
 import '../models/vehicle_filter.dart';
 import '../sample/sample_data.dart';
 import '../schedule.dart';
@@ -108,7 +109,11 @@ class TransitRepository {
               .map(
                 (line) => StopDeparture(
                   line: line,
-                  at: TransitSchedule.nextDeparture(line.frequencyMinutes, at),
+                  at: TransitSchedule.nextDeparture(
+                    line.frequencyMinutes,
+                    at,
+                    line.dailyDepartureMinutes,
+                  ),
                 ),
               )
               .toList()
@@ -238,5 +243,120 @@ class TransitRepository {
     return nearbyStops(from, limit: null, now: now)
         .where((item) => stopMatches(item.stop, filter))
         .toList();
+  }
+
+  Stop? closestStop(LatLng from, {double? maxMeters}) {
+    Stop? best;
+    var bestMeters = maxMeters ?? double.infinity;
+    for (final stop in getStops()) {
+      final meters = _distance.as(LengthUnit.Meter, from, stop.location);
+      if (meters < bestMeters) {
+        best = stop;
+        bestMeters = meters;
+      }
+    }
+    return best;
+  }
+
+  /// Walk + optional one-seat ride from [from] to [to].
+  TripPlan planTrip({
+    required LatLng from,
+    required LatLng to,
+    required String destinationLabel,
+  }) {
+    const maxWalkMeters = 1500.0;
+    final board = closestStop(from, maxMeters: maxWalkMeters);
+    final alight = closestStop(to, maxMeters: maxWalkMeters);
+
+    TransitLine? shared;
+    List<LatLng> ridePoints = const [];
+    if (board != null &&
+        alight != null &&
+        board.id != alight.id) {
+      for (final lineId in board.lineIds) {
+        if (!alight.lineIds.contains(lineId)) continue;
+        final line = getLine(lineId);
+        if (line == null) continue;
+        final segment = _segmentOnLine(line, board.location, alight.location);
+        if (segment.length < 2) continue;
+        shared = line;
+        ridePoints = segment;
+        break;
+      }
+    }
+
+    final legs = <TripLeg>[];
+    if (shared != null && board != null && alight != null) {
+      final walkTo = _distance.as(LengthUnit.Meter, from, board.location);
+      final walkFrom = _distance.as(LengthUnit.Meter, alight.location, to);
+      if (walkTo > 30) {
+        legs.add(
+          TripLeg(
+            label: 'Walk to ${board.name}',
+            points: [from, board.location],
+            meters: walkTo,
+          ),
+        );
+      }
+      legs.add(
+        TripLeg(
+          label: '${shared.modeLabel} ${shared.number}',
+          points: ridePoints,
+          line: shared,
+          fromStop: board,
+          toStop: alight,
+        ),
+      );
+      if (walkFrom > 30) {
+        legs.add(
+          TripLeg(
+            label: 'Walk to $destinationLabel',
+            points: [alight.location, to],
+            meters: walkFrom,
+          ),
+        );
+      }
+    } else {
+      final meters = _distance.as(LengthUnit.Meter, from, to);
+      legs.add(
+        TripLeg(
+          label: 'To $destinationLabel',
+          points: [from, to],
+          meters: meters,
+        ),
+      );
+    }
+
+    return TripPlan(
+      origin: from,
+      destination: to,
+      destinationLabel: destinationLabel,
+      legs: legs,
+    );
+  }
+
+  List<LatLng> _segmentOnLine(TransitLine line, LatLng start, LatLng end) {
+    if (line.stops.length < 2) return [start, end];
+
+    int nearest(LatLng point) {
+      var best = 0;
+      var bestMeters = double.infinity;
+      for (var i = 0; i < line.stops.length; i++) {
+        final meters = _distance.as(LengthUnit.Meter, point, line.stops[i]);
+        if (meters < bestMeters) {
+          best = i;
+          bestMeters = meters;
+        }
+      }
+      return best;
+    }
+
+    final fromIndex = nearest(start);
+    final toIndex = nearest(end);
+    if (fromIndex == toIndex) return [line.stops[fromIndex]];
+    if (fromIndex < toIndex) {
+      return line.stops.sublist(fromIndex, toIndex + 1);
+    }
+    return line.stops.sublist(toIndex, fromIndex + 1).reversed.toList();
   }
 }
