@@ -7,7 +7,14 @@ import '../../core/location/location_scope.dart';
 import '../../core/theme/app_colors.dart';
 import '../../data/models/saved_address.dart';
 import '../../data/models/stop.dart';
+import '../../data/models/trip_plan.dart';
 import '../../data/repositories/transit_repository.dart';
+import '../../data/schedule.dart';
+import '../home/edit_favourites_screen.dart';
+import '../stops/favourite_stops_section.dart';
+import '../stops/nearby_stops_section.dart';
+import '../widgets/line_badge.dart';
+import '../widgets/stop_mode_avatar.dart';
 
 class MapScreen extends StatefulWidget {
   const MapScreen({super.key});
@@ -23,9 +30,10 @@ class _MapScreenState extends State<MapScreen> {
   final _searchFocus = FocusNode();
 
   String _query = '';
-  bool _sheetOpen = false;
   bool _mapReady = false;
   LatLng? _centeredOn;
+  TripPlan? _trip;
+  double? _sheetExtent;
 
   @override
   void dispose() {
@@ -34,9 +42,16 @@ class _MapScreenState extends State<MapScreen> {
     super.dispose();
   }
 
-  void _moveTo(LatLng point, {double zoom = 16}) {
+  void _moveTo(
+    LatLng point, {
+    double zoom = 16,
+    double bottomCoveredFraction = 0,
+  }) {
     if (!_mapReady) return;
-    _mapController.move(point, zoom);
+    final offsetY = bottomCoveredFraction <= 0
+        ? 0.0
+        : -MediaQuery.sizeOf(context).height * bottomCoveredFraction / 2;
+    _mapController.move(point, zoom, offset: Offset(0, offsetY));
     _centeredOn = point;
   }
 
@@ -65,7 +80,76 @@ class _MapScreenState extends State<MapScreen> {
     _searchFocus.unfocus();
     _searchController.clear();
     setState(() => _query = '');
-    _moveTo(stop.location);
+    _moveTo(stop.location, bottomCoveredFraction: 0.5);
+  }
+
+  LatLng? _pointFor(SavedAddress address) {
+    if (address.hasCoordinates) return LatLng(address.lat!, address.lng!);
+    final query = address.details?.trim() ?? '';
+    if (query.isEmpty) return null;
+    final matches = _repo.searchStops(query);
+    return matches.isEmpty ? null : matches.first.location;
+  }
+
+  void _toast(String message) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  void _fitTrip(TripPlan trip) {
+    if (!_mapReady) return;
+    final points = trip.path;
+    if (points.length < 2) {
+      _moveTo(trip.destination);
+      return;
+    }
+    _mapController.fitCamera(
+      CameraFit.bounds(
+        bounds: LatLngBounds.fromPoints(points),
+        padding: const EdgeInsets.fromLTRB(40, 180, 40, 160),
+      ),
+    );
+  }
+
+  Future<void> _routeToAddress(SavedAddress address) async {
+    final destination = _pointFor(address);
+    if (destination == null) {
+      _toast('This place has no map location yet.');
+      return;
+    }
+
+    final location = LocationScope.maybeOf(context);
+    if (location != null && !location.hasFix) {
+      await location.requestAccess();
+    }
+    if (!mounted) return;
+    final origin = location?.position;
+    if (origin == null) {
+      _toast('Turn on location to plan a route.');
+      return;
+    }
+
+    final trip = _repo.planTrip(
+      from: origin,
+      to: destination,
+      destinationLabel: address.name,
+    );
+    _searchFocus.unfocus();
+    _searchController.text = address.name;
+    setState(() {
+      _query = '';
+      _trip = trip;
+    });
+    _fitTrip(trip);
+  }
+
+  void _clearTrip() {
+    _searchController.clear();
+    setState(() {
+      _query = '';
+      _trip = null;
+    });
   }
 
   @override
@@ -75,14 +159,13 @@ class _MapScreenState extends State<MapScreen> {
     final location = LocationScope.maybeOf(context);
     final userPosition = location?.position;
     final favorites = FavoritesScope.maybeOf(context);
-    final addresses = favorites?.addresses ?? const <SavedAddress>[];
-    final favouriteStops = <Stop>[
-      for (final id in favorites?.stopIds ?? const <String>[])
-        ?_repo.getStop(id),
-    ];
+    final addresses = (favorites?.displayAddresses ?? SavedAddress.emptyPresets)
+        .where((address) => address.isSet)
+        .toList();
     final results = _query.trim().isEmpty
         ? const <Stop>[]
         : _repo.searchStops(_query).take(8).toList();
+    final trip = _trip;
 
     final markers = <Marker>[
       if (userPosition != null)
@@ -104,119 +187,170 @@ class _MapScreenState extends State<MapScreen> {
             ),
           ),
         ),
+      if (trip != null)
+        Marker(
+          point: trip.destination,
+          width: 36,
+          height: 36,
+          child: const DecoratedBox(
+            decoration: BoxDecoration(
+              color: AppColors.secondary,
+              shape: BoxShape.circle,
+              boxShadow: [BoxShadow(color: Color(0x33000000), blurRadius: 8)],
+            ),
+            child: Icon(Icons.place_rounded, color: Colors.white, size: 20),
+          ),
+        ),
     ];
 
     return Scaffold(
-      floatingActionButton: Padding(
-        padding: EdgeInsets.only(bottom: _sheetOpen ? 220 : 72),
-        child: FloatingActionButton.small(
-          onPressed: _goToUser,
-          tooltip: 'My location',
-          child: const Icon(Icons.my_location_rounded),
-        ),
-      ),
-      body: Stack(
-        children: [
-          FlutterMap(
-            mapController: _mapController,
-            options: MapOptions(
-              initialCenter: userPosition ?? const LatLng(42.6629, 21.1655),
-              initialZoom: userPosition == null ? 13 : 15,
-              minZoom: 7,
-              maxZoom: 18,
-              onMapReady: () => _mapReady = true,
-              interactionOptions: const InteractionOptions(
-                flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
-              ),
-            ),
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final headerHeight = addresses.isEmpty ? 132.0 : 108.0;
+          final minExtent = constraints.maxHeight <= 0
+              ? 0.2
+              : (headerHeight / constraints.maxHeight).clamp(0.14, 0.34);
+          final extent = _sheetExtent ?? minExtent;
+          final sheetHeight = constraints.maxHeight * extent;
+          return Stack(
             children: [
-              TileLayer(
-                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                userAgentPackageName: 'com.dugzino.shqiperia_transport',
-              ),
-              MarkerLayer(markers: markers),
-              const RichAttributionWidget(
-                attributions: [
-                  TextSourceAttribution('OpenStreetMap contributors'),
+              FlutterMap(
+                mapController: _mapController,
+                options: MapOptions(
+                  initialCenter: userPosition ?? const LatLng(42.6629, 21.1655),
+                  initialZoom: userPosition == null ? 13 : 15,
+                  minZoom: 7,
+                  maxZoom: 18,
+                  onMapReady: () => _mapReady = true,
+                  interactionOptions: const InteractionOptions(
+                    flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
+                  ),
+                ),
+                children: [
+                  TileLayer(
+                    urlTemplate:
+                        'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                    userAgentPackageName: 'com.dugzino.shqiperia_transport',
+                  ),
+                  if (trip != null)
+                    PolylineLayer(
+                      polylines: [
+                        for (final leg in trip.legs)
+                          Polyline(
+                            points: leg.points,
+                            color: leg.line?.color ?? AppColors.secondary,
+                            strokeWidth: leg.isTransit ? 6 : 4,
+                          ),
+                      ],
+                    ),
+                  MarkerLayer(markers: markers),
+                  const RichAttributionWidget(
+                    attributions: [
+                      TextSourceAttribution('OpenStreetMap contributors'),
+                    ],
+                  ),
                 ],
               ),
-            ],
-          ),
-          Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
-            child: ColoredBox(
-              color: AppColors.primary,
-              child: SizedBox(height: MediaQuery.paddingOf(context).top),
-            ),
-          ),
-          SafeArea(
-            bottom: false,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  _WhereToBar(
-                    controller: _searchController,
-                    focusNode: _searchFocus,
-                    onChanged: (value) => setState(() => _query = value),
-                    onClear: () {
-                      _searchController.clear();
-                      setState(() => _query = '');
-                    },
-                  ),
-                  if (results.isNotEmpty) ...[
-                    const SizedBox(height: 8),
-                    Material(
-                      elevation: 3,
-                      borderRadius: BorderRadius.circular(16),
-                      color: Colors.white,
-                      child: ListView.separated(
-                        shrinkWrap: true,
-                        padding: EdgeInsets.zero,
-                        itemCount: results.length,
-                        separatorBuilder: (_, _) => const Divider(height: 1),
-                        itemBuilder: (context, index) {
-                          final stop = results[index];
-                          return ListTile(
-                            leading: const Icon(
-                              Icons.hail_rounded,
-                              color: AppColors.secondary,
-                            ),
-                            title: Text(
-                              stop.name,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                            subtitle: Text('${stop.lineIds.length} line(s)'),
-                            onTap: () => _selectStop(stop),
-                          );
+              Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                child: ColoredBox(
+                  color: AppColors.primary,
+                  child: SizedBox(height: MediaQuery.paddingOf(context).top),
+                ),
+              ),
+              SafeArea(
+                bottom: false,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _WhereToBar(
+                        controller: _searchController,
+                        focusNode: _searchFocus,
+                        onChanged: (value) => setState(() {
+                          _query = value;
+                          if (_trip != null) _trip = null;
+                        }),
+                        onClear: () {
+                          _searchController.clear();
+                          setState(() {
+                            _query = '';
+                            _trip = null;
+                          });
                         },
                       ),
-                    ),
-                  ],
-                ],
+                      if (trip != null) ...[
+                        const SizedBox(height: 8),
+                        _TripCard(trip: trip, onClose: _clearTrip),
+                      ],
+                      if (results.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        Material(
+                          elevation: 3,
+                          borderRadius: BorderRadius.circular(16),
+                          color: Colors.white,
+                          child: ListView.separated(
+                            shrinkWrap: true,
+                            padding: EdgeInsets.zero,
+                            itemCount: results.length,
+                            separatorBuilder: (_, _) =>
+                                const Divider(height: 1),
+                            itemBuilder: (context, index) {
+                              final stop = results[index];
+                              return ListTile(
+                                leading: StopModeAvatar.forStop(stop),
+                                title: Text(
+                                  stop.name,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                subtitle: Text(
+                                  '${stop.lineIds.length} line(s)',
+                                ),
+                                onTap: () => _selectStop(stop),
+                              );
+                            },
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
               ),
-            ),
-          ),
-          Align(
-            alignment: Alignment.bottomCenter,
-            child: _TransitSheet(
-              expanded: _sheetOpen,
-              addresses: addresses,
-              favouriteStops: favouriteStops,
-              onToggle: () => setState(() => _sheetOpen = !_sheetOpen),
-              onAddressTap: (address) {
-                if (address.lat == null || address.lng == null) return;
-                _moveTo(LatLng(address.lat!, address.lng!));
-              },
-              onStopTap: _selectStop,
-            ),
-          ),
-        ],
+              _TransitSheet(
+                addresses: addresses,
+                minSize: minExtent,
+                onExtent: (extent) {
+                  if (_sheetExtent != null &&
+                      (extent - _sheetExtent!).abs() < 0.01) {
+                    return;
+                  }
+                  setState(() => _sheetExtent = extent);
+                },
+                onAddressTap: _routeToAddress,
+                onAddAddress: () => EditFavouritesScreen.open(
+                  context,
+                  initialTab: FavouritesTab.places,
+                ),
+                onStopTap: _selectStop,
+              ),
+              if (extent < 0.9)
+                Positioned(
+                  right: 50,
+                  bottom: sheetHeight + 50,
+                  child: FloatingActionButton.small(
+                    onPressed: _goToUser,
+                    tooltip: 'My location',
+                    child: const Icon(Icons.my_location_rounded),
+                  ),
+                ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -280,144 +414,359 @@ class _WhereToBar extends StatelessWidget {
   }
 }
 
-class _TransitSheet extends StatelessWidget {
-  const _TransitSheet({
-    required this.expanded,
-    required this.addresses,
-    required this.favouriteStops,
-    required this.onToggle,
-    required this.onAddressTap,
-    required this.onStopTap,
-  });
+class _TripCard extends StatelessWidget {
+  const _TripCard({required this.trip, required this.onClose});
 
-  final bool expanded;
-  final List<SavedAddress> addresses;
-  final List<Stop> favouriteStops;
-  final VoidCallback onToggle;
-  final ValueChanged<SavedAddress> onAddressTap;
-  final ValueChanged<Stop> onStopTap;
+  final TripPlan trip;
+  final VoidCallback onClose;
 
   @override
   Widget build(BuildContext context) {
-    final maxListHeight = MediaQuery.sizeOf(context).height * 0.36;
-
     return Material(
-      color: Colors.transparent,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          GestureDetector(
-            key: const Key('transit-sheet-handle'),
-            onTap: onToggle,
-            onVerticalDragEnd: (details) {
-              final velocity = details.primaryVelocity ?? 0;
-              if (velocity < -180 && !expanded) onToggle();
-              if (velocity > 180 && expanded) onToggle();
-            },
-            child: Container(
-              width: double.infinity,
-              decoration: const BoxDecoration(
-                color: AppColors.primary,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
-              ),
-              padding: EdgeInsets.fromLTRB(
-                16,
-                10,
-                16,
-                addresses.isEmpty ? 14 : 8,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Center(
-                    child: Container(
-                      width: 40,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.7),
-                        borderRadius: BorderRadius.circular(999),
-                      ),
+      key: const Key('trip-card'),
+      elevation: 3,
+      borderRadius: BorderRadius.circular(16),
+      color: Colors.white,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 10, 6, 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.directions_rounded, color: AppColors.primary),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'To ${trip.destinationLabel}',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 16,
                     ),
                   ),
-                  if (addresses.isNotEmpty) ...[
-                    const SizedBox(height: 12),
-                    for (final address in addresses)
-                      Material(
-                        color: Colors.transparent,
-                        child: ListTile(
-                          dense: true,
-                          contentPadding: EdgeInsets.zero,
-                          leading: CircleAvatar(
-                            backgroundColor:
-                                Colors.white.withValues(alpha: 0.16),
-                            child: Icon(address.icon, color: Colors.white),
-                          ),
-                          title: Text(
-                            address.name,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                          subtitle: address.details == null
-                              ? null
-                              : Text(
-                                  address.details!,
-                                  style: const TextStyle(color: Colors.white70),
-                                ),
-                          onTap: () => onAddressTap(address),
-                        ),
-                      ),
-                  ],
-                ],
+                ),
+                IconButton(
+                  tooltip: 'Clear route',
+                  onPressed: onClose,
+                  icon: const Icon(Icons.close_rounded),
+                ),
+              ],
+            ),
+            const Padding(
+              padding: EdgeInsets.only(left: 32, bottom: 8),
+              child: Text(
+                'Your location',
+                style: TextStyle(color: AppColors.textSecondary),
               ),
+            ),
+            for (final leg in trip.legs)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(4, 0, 8, 8),
+                child: Row(
+                  children: [
+                    if (leg.line != null)
+                      LineBadge(line: leg.line!, compact: true)
+                    else
+                      const Icon(
+                        Icons.directions_walk_rounded,
+                        color: AppColors.secondary,
+                        size: 20,
+                      ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        [
+                          leg.label,
+                          if (leg.meters != null)
+                            TransitSchedule.distanceLabel(leg.meters!),
+                        ].join(' · '),
+                        style: const TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _TransitSheet extends StatefulWidget {
+  const _TransitSheet({
+    required this.addresses,
+    required this.minSize,
+    required this.onExtent,
+    required this.onAddressTap,
+    required this.onAddAddress,
+    required this.onStopTap,
+  });
+
+  final List<SavedAddress> addresses;
+  final double minSize;
+  final ValueChanged<double> onExtent;
+  final ValueChanged<SavedAddress> onAddressTap;
+  final VoidCallback onAddAddress;
+  final ValueChanged<Stop> onStopTap;
+
+  @override
+  State<_TransitSheet> createState() => _TransitSheetState();
+}
+
+class _TransitSheetState extends State<_TransitSheet> {
+  final _controller = DraggableScrollableController();
+
+  double get _headerHeight => widget.addresses.isEmpty ? 132 : 108;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_controller.isAttached) return;
+      widget.onExtent(_controller.size);
+    });
+  }
+
+  Future<void> _animateTo(double size) async {
+    if (!_controller.isAttached) return;
+    await _controller.animateTo(
+      size,
+      duration: const Duration(milliseconds: 280),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
+  Future<void> _toggle() async {
+    final min = widget.minSize;
+    final target = !_controller.isAttached || _controller.size <= min + 0.08
+        ? 1.0
+        : min;
+    await _animateTo(target);
+  }
+
+  Future<void> _collapseAndSelect(Stop stop) async {
+    widget.onStopTap(stop);
+    await _animateTo(0.5);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final min = widget.minSize;
+    return NotificationListener<DraggableScrollableNotification>(
+      onNotification: (notification) {
+        widget.onExtent(notification.extent);
+        return false;
+      },
+      child: DraggableScrollableSheet(
+        controller: _controller,
+        initialChildSize: min,
+        minChildSize: min,
+        maxChildSize: 1,
+        snap: true,
+        snapSizes: const [0.5],
+        builder: (context, scrollController) {
+          return Material(
+            color: AppColors.surface,
+            elevation: 8,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(18)),
+            clipBehavior: Clip.antiAlias,
+            child: CustomScrollView(
+              controller: scrollController,
+              slivers: [
+                SliverPersistentHeader(
+                  pinned: true,
+                  delegate: _SheetHeaderDelegate(
+                    height: _headerHeight,
+                    child: _SheetHeader(
+                      addresses: widget.addresses,
+                      onToggle: _toggle,
+                      onAddressTap: widget.onAddressTap,
+                      onAddAddress: widget.onAddAddress,
+                    ),
+                  ),
+                ),
+                SliverToBoxAdapter(
+                  child: FavouriteStopsSection(onStopTap: _collapseAndSelect),
+                ),
+                SliverToBoxAdapter(
+                  child: NearbyStopsSection(onStopTap: _collapseAndSelect),
+                ),
+                const SliverToBoxAdapter(child: SizedBox(height: 28)),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _SheetHeaderDelegate extends SliverPersistentHeaderDelegate {
+  _SheetHeaderDelegate({required this.height, required this.child});
+
+  final double height;
+  final Widget child;
+
+  @override
+  double get minExtent => height;
+
+  @override
+  double get maxExtent => height;
+
+  @override
+  Widget build(
+    BuildContext context,
+    double shrinkOffset,
+    bool overlapsContent,
+  ) {
+    return child;
+  }
+
+  @override
+  bool shouldRebuild(covariant _SheetHeaderDelegate oldDelegate) {
+    return oldDelegate.height != height || oldDelegate.child != child;
+  }
+}
+
+class _SheetHeader extends StatelessWidget {
+  const _SheetHeader({
+    required this.addresses,
+    required this.onToggle,
+    required this.onAddressTap,
+    required this.onAddAddress,
+  });
+
+  final List<SavedAddress> addresses;
+  final VoidCallback onToggle;
+  final ValueChanged<SavedAddress> onAddressTap;
+  final VoidCallback onAddAddress;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: AppColors.primary,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            GestureDetector(
+              key: const Key('transit-sheet-handle'),
+              behavior: HitTestBehavior.opaque,
+              onTap: onToggle,
+              child: SizedBox(
+                height: 24,
+                width: double.infinity,
+                child: Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.7),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            if (addresses.isEmpty)
+              Column(
+                children: [
+                  const Text(
+                    'No addresses saved yet.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: Colors.white70, height: 1.35),
+                  ),
+                  const SizedBox(height: 8),
+                  FilledButton(
+                    key: const Key('add-place'),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: Colors.white,
+                      foregroundColor: AppColors.primary,
+                      textStyle: const TextStyle(fontWeight: FontWeight.w800),
+                    ),
+                    onPressed: onAddAddress,
+                    child: const Text('Add a place'),
+                  ),
+                ],
+              )
+            else
+              SizedBox(
+                height: 44,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.only(right: 8),
+                  itemCount: addresses.length,
+                  separatorBuilder: (_, _) => const SizedBox(width: 8),
+                  itemBuilder: (context, index) {
+                    final address = addresses[index];
+                    return _SavedAddressChip(
+                      address: address,
+                      onTap: () => onAddressTap(address),
+                    );
+                  },
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SavedAddressChip extends StatelessWidget {
+  const _SavedAddressChip({required this.address, required this.onTap});
+
+  final SavedAddress address;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    if (address.isPreset) {
+      return Tooltip(
+        message: address.name,
+        child: Material(
+          color: Colors.white.withValues(alpha: 0.16),
+          shape: const CircleBorder(),
+          child: InkWell(
+            key: Key('saved-address-${address.id}'),
+            customBorder: const CircleBorder(),
+            onTap: onTap,
+            child: SizedBox(
+              width: 44,
+              height: 44,
+              child: Icon(address.icon, color: Colors.white),
             ),
           ),
-          if (expanded)
-            Material(
-              color: const Color(0xFFE8EAED),
-              child: ConstrainedBox(
-                constraints: BoxConstraints(maxHeight: maxListHeight),
-                child: favouriteStops.isEmpty
-                    ? const Padding(
-                        padding: EdgeInsets.fromLTRB(20, 18, 20, 24),
-                        child: Text(
-                          'No favourite stops yet. Star a stop from Edit favourites.',
-                          style: TextStyle(
-                            color: AppColors.textSecondary,
-                            height: 1.35,
-                          ),
-                        ),
-                      )
-                    : ListView.separated(
-                        shrinkWrap: true,
-                        padding: const EdgeInsets.fromLTRB(8, 8, 8, 16),
-                        itemCount: favouriteStops.length,
-                        separatorBuilder: (_, _) => const Divider(height: 1),
-                        itemBuilder: (context, index) {
-                          final stop = favouriteStops[index];
-                          return ListTile(
-                            leading: const CircleAvatar(
-                              backgroundColor: Colors.white,
-                              child: Icon(
-                                Icons.hail_rounded,
-                                color: AppColors.secondary,
-                              ),
-                            ),
-                            title: Text(
-                              stop.name,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                            subtitle: Text('${stop.lineIds.length} line(s)'),
-                            onTap: () => onStopTap(stop),
-                          );
-                        },
-                      ),
-              ),
+        ),
+      );
+    }
+
+    return Material(
+      color: Colors.white.withValues(alpha: 0.16),
+      borderRadius: BorderRadius.circular(22),
+      child: InkWell(
+        key: Key('saved-address-${address.id}'),
+        borderRadius: BorderRadius.circular(22),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          child: Text(
+            address.name,
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w700,
             ),
-        ],
+          ),
+        ),
       ),
     );
   }
