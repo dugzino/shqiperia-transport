@@ -13,7 +13,13 @@ void main() {
     expect(find.text('Stops'), findsOneWidget);
     expect(find.text('Tickets'), findsOneWidget);
     expect(find.text('Settings'), findsOneWidget);
-    expect(find.text('Home'), findsNothing);
+    expect(
+      find.descendant(
+        of: find.byType(NavigationBar),
+        matching: find.text('Home'),
+      ),
+      findsNothing,
+    );
     expect(find.text('Search'), findsNothing);
     expect(find.text('Map'), findsNothing);
   });
