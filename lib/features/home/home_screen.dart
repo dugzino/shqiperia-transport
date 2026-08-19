@@ -1,90 +1,65 @@
 import 'package:flutter/material.dart';
+import 'package:latlong2/latlong.dart';
 
+import '../../core/favorites/favorites_controller.dart';
+import '../../core/favorites/favorites_scope.dart';
 import '../../core/location/location_controller.dart';
 import '../../core/location/location_scope.dart';
 import '../../core/theme/app_colors.dart';
 import '../../data/models/city.dart';
 import '../../data/models/nearby_stop.dart';
+import '../../data/models/stop.dart';
+import '../../data/models/transit_line.dart';
 import '../../data/repositories/transit_repository.dart';
 import '../../data/schedule.dart';
+import '../widgets/favorite_star_button.dart';
 import '../widgets/line_badge.dart';
 import '../widgets/section_header.dart';
 import '../lines/line_detail_screen.dart';
+import 'edit_favourites_screen.dart';
 
-class HomeScreen extends StatefulWidget {
+class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
 
-  @override
-  State<HomeScreen> createState() => _HomeScreenState();
-}
-
-class _HomeScreenState extends State<HomeScreen> {
   static const _repo = TransitRepository();
-  late City _selectedCity;
-  bool _userPickedCity = false;
-  String? _appliedCityFromLocation;
-
-  @override
-  void initState() {
-    super.initState();
-    _selectedCity = _repo.getCities().first;
-  }
-
-  void _applyNearestCity(LocationController location) {
-    final pos = location.position;
-    if (_userPickedCity || pos == null) return;
-    final nearest = _repo.nearestCity(pos);
-    if (_appliedCityFromLocation == nearest.id) return;
-    _appliedCityFromLocation = nearest.id;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || _userPickedCity) return;
-      if (_selectedCity.id != nearest.id) {
-        setState(() => _selectedCity = nearest);
-      }
-    });
-  }
 
   @override
   Widget build(BuildContext context) {
     final location = LocationScope.maybeOf(context);
-    if (location != null) _applyNearestCity(location);
     final nearby = location?.position == null
         ? const <NearbyStop>[]
-        : _repo.nearbyStops(location!.position!);
-    final lines = _repo.getLines(cityId: _selectedCity.id);
-    final theme = Theme.of(context);
+        : _repo.nearbyStops(location!.position!, limit: null);
+    final favorites = FavoritesScope.maybeOf(context);
 
     return Scaffold(
-      body: SafeArea(
-        child: CustomScrollView(
-          slivers: [
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Soar Albania',
-                      style: theme.textTheme.headlineSmall?.copyWith(
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Buses & routes across Kosovo and Albania',
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
-                  ],
-                ),
+      appBar: AppBar(
+        toolbarHeight: 88,
+        title: const Padding(
+          padding: EdgeInsets.only(top: 10),
+          child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Soar Albania'),
+            SizedBox(height: 2),
+            Text(
+              'Buses & routes across Kosova and Albania',
+              style: TextStyle(
+                color: Colors.white70,
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
               ),
             ),
+          ],
+          ),
+        ),
+      ),
+      body: CustomScrollView(
+        slivers: [
             SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 12, 20, 4),
-                child: _HeroCard(city: _selectedCity, lineCount: lines.length),
+              child: _FavouriteLinesSection(
+                repo: _repo,
+                favorites: favorites,
+                from: location?.position,
               ),
             ),
             if (location != null)
@@ -94,91 +69,183 @@ class _HomeScreenState extends State<HomeScreen> {
                   nearby: nearby,
                 ),
               ),
-            const SliverToBoxAdapter(
-              child: SectionHeader(title: 'Cities'),
-            ),
-            SliverToBoxAdapter(
-              child: SizedBox(
-                height: 108,
-                child: ListView.separated(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  scrollDirection: Axis.horizontal,
-                  itemCount: _repo.getCities().length,
-                  separatorBuilder: (_, _) => const SizedBox(width: 10),
-                  itemBuilder: (context, index) {
-                    final city = _repo.getCities()[index];
-                    final selected = city.id == _selectedCity.id;
-                    return _CityChip(
-                      city: city,
-                      selected: selected,
-                      onTap: () => setState(() {
-                        _userPickedCity = true;
-                        _selectedCity = city;
-                      }),
-                    );
-                  },
-                ),
-              ),
-            ),
-            SliverToBoxAdapter(
-              child: SectionHeader(
-                title: 'Lines in ${_selectedCity.name}',
-              ),
-            ),
-            if (lines.isEmpty)
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: Text(
-                    'No lines yet for this city.',
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: AppColors.textSecondary,
-                    ),
+            const SliverToBoxAdapter(child: SizedBox(height: 16)),
+          ],
+      ),
+    );
+  }
+}
+
+class _FavouriteLinesSection extends StatelessWidget {
+  const _FavouriteLinesSection({
+    required this.repo,
+    required this.favorites,
+    this.from,
+  });
+
+  final TransitRepository repo;
+  final FavoritesController? favorites;
+  final LatLng? from;
+
+  @override
+  Widget build(BuildContext context) {
+    final favouriteIds = favorites?.lineIds ?? const <String>[];
+    final hasFavourites = favouriteIds.isNotEmpty;
+    final lines = from == null
+        ? const <TransitLine>[]
+        : repo.closestFavouriteLines(favouriteIds, from!);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SectionHeader(
+          title: 'Favourite lines',
+          trailing: IconButton(
+            tooltip: 'Edit favourites',
+            onPressed: () => EditFavouritesScreen.open(context),
+            icon: const Icon(Icons.edit_rounded),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+          child: !hasFavourites
+              ? const _LocationBanner(
+                  icon: Icons.star_outline_rounded,
+                  title: 'No favourite lines yet',
+                  body:
+                      'Tap edit to pin lines here with the next departures.',
+                )
+              : from == null
+                  ? const _LocationBanner(
+                      icon: Icons.near_me_rounded,
+                      title: 'Find closest favourites',
+                      body:
+                          'Allow location to show the 3 closest favourite lines within 10 km.',
+                    )
+                  : lines.isEmpty
+                      ? const _LocationBanner(
+                          icon: Icons.near_me_disabled_rounded,
+                          title: 'No favourite lines nearby',
+                          body:
+                              'None of your favourite lines are within 10 km.',
+                        )
+                      : Column(
+                          children: [
+                            for (final line in lines) ...[
+                              _FavouriteLineCard(
+                                line: line,
+                                city: repo.getCity(line.cityId),
+                                closest: repo.closestStopOnLine(line.id, from!),
+                              ),
+                              const SizedBox(height: 10),
+                            ],
+                          ],
+                        ),
+        ),
+      ],
+    );
+  }
+}
+
+class _FavouriteLineCard extends StatelessWidget {
+  const _FavouriteLineCard({
+    required this.line,
+    this.city,
+    this.closest,
+  });
+
+  final TransitLine line;
+  final City? city;
+  final ({Stop stop, double meters})? closest;
+
+  @override
+  Widget build(BuildContext context) {
+    final next = TransitSchedule.nextDepartures(line.frequencyMinutes);
+    final subtitleParts = <String>[
+      if (city != null) city!.name,
+      line.modeLabel,
+      'every ${line.frequencyMinutes} min',
+      if (closest != null)
+        '${closest!.stop.name} · ${TransitSchedule.distanceLabel(closest!.meters)}',
+    ];
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                LineBadge(line: line),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        line.name,
+                        style: const TextStyle(fontWeight: FontWeight.w800),
+                      ),
+                      Text(
+                        subtitleParts.join(' · '),
+                        style: const TextStyle(
+                          color: AppColors.textSecondary,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-              )
-            else
-              SliverPadding(
-                padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
-                sliver: SliverList.separated(
-                  itemCount: lines.length,
-                  separatorBuilder: (_, _) => const SizedBox(height: 10),
-                  itemBuilder: (context, index) {
-                    final line = lines[index];
-                    return Card(
-                      child: ListTile(
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 6,
+                FavoriteStarButton(lineId: line.id),
+              ],
+            ),
+            if (next.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              for (var i = 0; i < next.length; i++)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(10),
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => LineDetailScreen(lineId: line.id),
                         ),
-                        leading: LineBadge(line: line),
-                        title: Text(
-                          line.name,
-                          style: const TextStyle(fontWeight: FontWeight.w700),
+                      );
+                    },
+                    child: Row(
+                      children: [
+                        LineBadge(line: line, compact: true),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            i == 0 ? 'Next departure' : 'Then',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontWeight: FontWeight.w600),
+                          ),
                         ),
-                        subtitle: Text(
-                          '${line.modeLabel} · every ${line.frequencyMinutes} min',
-                          style: TextStyle(
+                        Text(
+                          TransitSchedule.minutesUntilLabel(next[i]),
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.primary,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          TransitSchedule.formatTime(next[i]),
+                          style: const TextStyle(
                             color: AppColors.textSecondary,
                             fontSize: 13,
                           ),
                         ),
-                        trailing: Icon(
-                          Icons.chevron_right_rounded,
-                          color: AppColors.textSecondary.withValues(alpha: 0.7),
-                        ),
-                        onTap: () {
-                          Navigator.of(context).push(
-                            MaterialPageRoute<void>(
-                              builder: (_) => LineDetailScreen(lineId: line.id),
-                            ),
-                          );
-                        },
-                      ),
-                    );
-                  },
+                      ],
+                    ),
+                  ),
                 ),
-              ),
+            ],
           ],
         ),
       ),
@@ -186,115 +253,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-class _HeroCard extends StatelessWidget {
-  const _HeroCard({required this.city, required this.lineCount});
-
-  final City city;
-  final int lineCount;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(20),
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [AppColors.primary, AppColors.primaryLight],
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.primary.withValues(alpha: 0.28),
-            blurRadius: 20,
-            offset: const Offset(0, 10),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Text(city.flag, style: const TextStyle(fontSize: 22)),
-              const SizedBox(width: 8),
-              Text(
-                city.countryLabel,
-                style: const TextStyle(
-                  color: Colors.white70,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Text(
-            city.nameLocal,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 28,
-              fontWeight: FontWeight.w800,
-              height: 1.1,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            city.name == city.nameLocal ? city.countryLabel : city.name,
-            style: const TextStyle(color: Colors.white70, fontSize: 15),
-          ),
-          const SizedBox(height: 16),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              _StatPill(icon: Icons.route_rounded, label: '$lineCount lines'),
-              const _StatPill(
-                icon: Icons.schedule_rounded,
-                label: 'Sample data',
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _StatPill extends StatelessWidget {
-  const _StatPill({required this.icon, required this.label});
-
-  final IconData icon;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.15),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 16, color: Colors.white),
-          const SizedBox(width: 6),
-          Text(
-            label,
-            style: const TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.w600,
-              fontSize: 13,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _LocationSection extends StatelessWidget {
+class _LocationSection extends StatefulWidget {
   const _LocationSection({
     required this.location,
     required this.nearby,
@@ -304,54 +263,91 @@ class _LocationSection extends StatelessWidget {
   final List<NearbyStop> nearby;
 
   @override
+  State<_LocationSection> createState() => _LocationSectionState();
+}
+
+class _LocationSectionState extends State<_LocationSection> {
+  bool _expanded = false;
+
+  LocationController get location => widget.location;
+  List<NearbyStop> get nearby => widget.nearby;
+
+  @override
   Widget build(BuildContext context) {
-    if (location.status == LocationStatus.granted && nearby.isNotEmpty) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const SectionHeader(title: 'Nearby stops'),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-            child: Column(
-              children: [
-                for (final stop in nearby) ...[
-                  _NearbyStopCard(nearby: stop),
-                  const SizedBox(height: 10),
-                ],
-              ],
-            ),
+    final searching = location.status == LocationStatus.requesting;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SectionHeader(
+          title: 'Nearby stops (<1km)',
+          trailing: IconButton(
+            tooltip: 'Refresh nearby stops',
+            onPressed: searching ? null : location.requestAccess,
+            icon: searching
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.refresh_rounded),
           ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+          child: _body(),
+        ),
+      ],
+    );
+  }
+
+  Widget _body() {
+    if (location.status == LocationStatus.granted && nearby.isNotEmpty) {
+      final preview = TransitRepository.nearbyStopLimit;
+      final visible = _expanded || nearby.length <= preview
+          ? nearby
+          : nearby.take(preview).toList();
+      final canExpand = nearby.length > preview;
+
+      return Column(
+        children: [
+          for (final stop in visible) ...[
+            _NearbyStopCard(nearby: stop),
+            const SizedBox(height: 10),
+          ],
+          if (canExpand)
+            TextButton.icon(
+              onPressed: () => setState(() => _expanded = !_expanded),
+              icon: Icon(
+                _expanded
+                    ? Icons.expand_less_rounded
+                    : Icons.expand_more_rounded,
+              ),
+              label: Text(_expanded ? 'Show less' : 'Show more'),
+            ),
         ],
       );
     }
 
     if (location.status == LocationStatus.granted && nearby.isEmpty) {
-      return const Padding(
-        padding: EdgeInsets.fromLTRB(20, 16, 20, 4),
-        child: _LocationBanner(
-          icon: Icons.near_me_disabled_rounded,
-          title: 'No stops nearby',
-          body: 'Nothing in the sample network is close to you yet. Browse cities below.',
-        ),
+      return const _LocationBanner(
+        icon: Icons.near_me_disabled_rounded,
+        title: 'No stops nearby',
+        body: 'Nothing in the sample network is close to you yet.',
       );
     }
 
     if (location.status == LocationStatus.requesting) {
-      return const Padding(
-        padding: EdgeInsets.fromLTRB(20, 16, 20, 4),
-        child: _LocationBanner(
-          icon: Icons.my_location_rounded,
-          title: 'Finding nearby stops…',
-          body: 'Using your location for the closest stops and next departures.',
-        ),
+      return const _LocationBanner(
+        icon: Icons.my_location_rounded,
+        title: 'Finding nearby stops…',
+        body: 'Using your location for the closest stops and next departures.',
       );
     }
 
     final deniedForever = location.status == LocationStatus.deniedForever;
     final disabled = location.status == LocationStatus.disabled;
-    final title = disabled
-        ? 'Turn on location'
-        : 'See nearby stops';
+    final title = disabled ? 'Turn on location' : 'See nearby stops';
     final body = disabled
         ? 'Location services are off. Turn them on to see nearby stops and next departures.'
         : deniedForever
@@ -359,21 +355,18 @@ class _LocationSection extends StatelessWidget {
             : 'Allow location to see the closest stops and the next departures on those lines.';
     final action = disabled || deniedForever ? 'Open settings' : 'Allow location';
 
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 4),
-      child: _LocationBanner(
-        icon: Icons.near_me_rounded,
-        title: title,
-        body: body,
-        actionLabel: action,
-        onAction: () {
-          if (disabled || deniedForever) {
-            location.openSettings();
-          } else {
-            location.requestAccess();
-          }
-        },
-      ),
+    return _LocationBanner(
+      icon: Icons.near_me_rounded,
+      title: title,
+      body: body,
+      actionLabel: action,
+      onAction: () {
+        if (disabled || deniedForever) {
+          location.openSettings();
+        } else {
+          location.requestAccess();
+        }
+      },
     );
   }
 }
@@ -540,60 +533,5 @@ class _NearbyStopCard extends StatelessWidget {
   }
 }
 
-class _CityChip extends StatelessWidget {
-  const _CityChip({
-    required this.city,
-    required this.selected,
-    required this.onTap,
-  });
 
-  final City city;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: selected ? AppColors.primary : Colors.white,
-      borderRadius: BorderRadius.circular(16),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Container(
-          width: 132,
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: selected ? AppColors.primary : AppColors.border,
-            ),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(city.flag, style: const TextStyle(fontSize: 18)),
-              const Spacer(),
-              Text(
-                city.name,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontWeight: FontWeight.w700,
-                  color: selected ? Colors.white : AppColors.textPrimary,
-                ),
-              ),
-              Text(
-                city.countryLabel,
-                style: TextStyle(
-                  fontSize: 12,
-                  color: selected ? Colors.white70 : AppColors.textSecondary,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
 

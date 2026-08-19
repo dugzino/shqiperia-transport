@@ -3,6 +3,7 @@ import 'package:flutter_map/flutter_map.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../data/repositories/transit_repository.dart';
+import '../widgets/favorite_star_button.dart';
 import '../widgets/line_badge.dart';
 
 class LineDetailScreen extends StatelessWidget {
@@ -28,6 +29,9 @@ class LineDetailScreen extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         title: Text('Line ${line.number}'),
+        actions: [
+          FavoriteStarButton(lineId: line.id),
+        ],
       ),
       body: ListView(
         children: [
@@ -102,7 +106,7 @@ class LineDetailScreen extends StatelessWidget {
                           ),
                           if (city != null)
                             Text(
-                              '${city.flag} ${city.nameLocal}',
+                              '${city.nameLocal} · ${city.countryLabel}',
                               style: theme.textTheme.bodyMedium?.copyWith(
                                 color: AppColors.textSecondary,
                               ),
@@ -143,6 +147,15 @@ class LineDetailScreen extends StatelessWidget {
                 ...List.generate(line.stops.length, (index) {
                   final isFirst = index == 0;
                   final isLast = index == line.stops.length - 1;
+                  final named = index < line.stopSlugs.length
+                      ? repo.getStop(line.stopSlugs[index])?.name
+                      : null;
+                  final label = named ??
+                      (isFirst
+                          ? 'Start · stop ${index + 1}'
+                          : isLast
+                              ? 'End · stop ${index + 1}'
+                              : 'Stop ${index + 1}');
                   return IntrinsicHeight(
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -182,11 +195,7 @@ class LineDetailScreen extends StatelessWidget {
                               left: 4,
                             ),
                             child: Text(
-                              isFirst
-                                  ? 'Start · stop ${index + 1}'
-                                  : isLast
-                                      ? 'End · stop ${index + 1}'
-                                      : 'Stop ${index + 1}',
+                              label,
                               style: TextStyle(
                                 fontWeight: isFirst || isLast
                                     ? FontWeight.w700
