@@ -39,6 +39,21 @@ abstract final class TransitSchedule {
     return next;
   }
 
+  static List<DateTime> nextDepartures(
+    int frequencyMinutes, {
+    int count = 2,
+    DateTime? now,
+  }) {
+    final result = <DateTime>[];
+    var cursor = now ?? DateTime.now();
+    for (var i = 0; i < count; i++) {
+      final next = nextDeparture(frequencyMinutes, cursor);
+      result.add(next);
+      cursor = next.add(const Duration(milliseconds: 1));
+    }
+    return result;
+  }
+
   static String formatTime(DateTime time) {
     final hour = time.hour.toString().padLeft(2, '0');
     final minute = time.minute.toString().padLeft(2, '0');

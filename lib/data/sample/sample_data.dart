@@ -4,6 +4,7 @@ import '../../core/theme/app_colors.dart';
 import '../models/city.dart';
 import '../models/stop.dart';
 import '../models/transit_line.dart';
+import 'prishtina_network.dart';
 
 /// Placeholder network so UI can be built before real GTFS / operator feeds.
 abstract final class SampleData {
@@ -14,7 +15,7 @@ abstract final class SampleData {
       nameLocal: 'Prishtinë',
       country: Country.kosovo,
       center: LatLng(42.6629, 21.1655),
-      lineCount: 4,
+      lineCount: 21,
     ),
     City(
       id: 'prizren',
@@ -58,55 +59,57 @@ abstract final class SampleData {
     ),
   ];
 
+  static final _prishtinaUrbanLines = _buildPrishtinaLines();
+
+  static List<TransitLine> _buildPrishtinaLines() {
+    final bySlug = {
+      for (final stop in prishtinaBusStops) stop.nameSlug: stop,
+    };
+    return [
+      for (var i = 0; i < prishtinaLines.length; i++)
+        TransitLine(
+          id: 'pr-${(prishtinaLines[i].number ?? '${i + 1}').toLowerCase()}',
+          number: prishtinaLines[i].number ?? '${i + 1}',
+          name: prishtinaLines[i].name,
+          cityId: 'pristina',
+          color: AppColors.linePalette[i % AppColors.linePalette.length],
+          mode: TransitMode.bus,
+          destination: prishtinaLines[i].stops.isEmpty
+              ? null
+              : bySlug[prishtinaLines[i].stops.last.nameSlug]?.name,
+          frequencyMinutes: 15,
+          stopSlugs: [
+            for (final stop in prishtinaLines[i].stops) stop.nameSlug,
+          ],
+          stops: [
+            for (final stop in prishtinaLines[i].stops)
+              if (bySlug[stop.nameSlug] case final raw?)
+                LatLng(raw.lat, raw.lng),
+          ],
+        ),
+    ];
+  }
+
+  static List<Stop> _buildPrishtinaStops() {
+    final lineIdsBySlug = <String, List<String>>{};
+    for (final line in _prishtinaUrbanLines) {
+      for (final slug in line.stopSlugs) {
+        lineIdsBySlug.putIfAbsent(slug, () => []).add(line.id);
+      }
+    }
+    return [
+      for (final stop in prishtinaBusStops)
+        Stop(
+          id: stop.nameSlug,
+          name: stop.name,
+          location: LatLng(stop.lat, stop.lng),
+          lineIds: lineIdsBySlug[stop.nameSlug] ?? const [],
+        ),
+    ];
+  }
+
   static final lines = <TransitLine>[
-    // Pristina
-    TransitLine(
-      id: 'pr-1',
-      number: '1',
-      name: 'Qendra – Kalabri',
-      cityId: 'pristina',
-      color: AppColors.linePalette[0],
-      mode: TransitMode.bus,
-      destination: 'Kalabri',
-      frequencyMinutes: 12,
-      stops: const [
-        LatLng(42.6629, 21.1655),
-        LatLng(42.6580, 21.1580),
-        LatLng(42.6520, 21.1500),
-        LatLng(42.6450, 21.1400),
-      ],
-    ),
-    TransitLine(
-      id: 'pr-4',
-      number: '4',
-      name: 'Qendra – Sunny Hill',
-      cityId: 'pristina',
-      color: AppColors.linePalette[1],
-      mode: TransitMode.bus,
-      destination: 'Sunny Hill',
-      frequencyMinutes: 15,
-      stops: const [
-        LatLng(42.6629, 21.1655),
-        LatLng(42.6680, 21.1720),
-        LatLng(42.6750, 21.1800),
-      ],
-    ),
-    TransitLine(
-      id: 'pr-7',
-      number: '7',
-      name: 'Terminal – Germia',
-      cityId: 'pristina',
-      color: AppColors.linePalette[2],
-      mode: TransitMode.bus,
-      destination: 'Germia',
-      frequencyMinutes: 18,
-      stops: const [
-        LatLng(42.6550, 21.1550),
-        LatLng(42.6629, 21.1655),
-        LatLng(42.6700, 21.1850),
-        LatLng(42.6780, 21.2000),
-      ],
-    ),
+    ..._prishtinaUrbanLines,
     TransitLine(
       id: 'pr-ic-prizren',
       number: 'IC',
@@ -253,24 +256,7 @@ abstract final class SampleData {
   ];
 
   static final stops = <Stop>[
-    const Stop(
-      id: 'pr-qendra',
-      name: 'Sheshi Skënderbeu',
-      location: LatLng(42.6629, 21.1655),
-      lineIds: ['pr-1', 'pr-4', 'pr-7'],
-    ),
-    const Stop(
-      id: 'pr-terminal',
-      name: 'Terminali i Autobusëve',
-      location: LatLng(42.6550, 21.1550),
-      lineIds: ['pr-7', 'pr-ic-prizren'],
-    ),
-    const Stop(
-      id: 'pr-kalabri',
-      name: 'Kalabri',
-      location: LatLng(42.6450, 21.1400),
-      lineIds: ['pr-1'],
-    ),
+    ..._buildPrishtinaStops(),
     const Stop(
       id: 'tr-skanderbeg',
       name: 'Sheshi Skënderbej',

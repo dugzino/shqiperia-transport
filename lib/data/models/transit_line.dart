@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:latlong2/latlong.dart';
 
-enum TransitMode { bus, minibus, intercity }
+enum TransitMode { bus, minibus, intercity, train }
 
 class TransitLine {
   const TransitLine({
@@ -12,6 +12,7 @@ class TransitLine {
     required this.color,
     required this.mode,
     required this.stops,
+    this.stopSlugs = const [],
     this.destination,
     this.frequencyMinutes = 20,
   });
@@ -23,18 +24,21 @@ class TransitLine {
   final Color color;
   final TransitMode mode;
   final List<LatLng> stops;
+  final List<String> stopSlugs;
   final String? destination;
   final int frequencyMinutes;
 
   String get modeLabel => switch (mode) {
     TransitMode.bus => 'Bus',
     TransitMode.minibus => 'Minibus',
-    TransitMode.intercity => 'Intercity',
+    TransitMode.intercity => 'Intercity bus',
+    TransitMode.train => 'Train',
   };
 
   IconData get modeIcon => switch (mode) {
     TransitMode.bus => Icons.directions_bus_rounded,
     TransitMode.minibus => Icons.airport_shuttle_rounded,
     TransitMode.intercity => Icons.directions_bus_filled_rounded,
+    TransitMode.train => Icons.train_rounded,
   };
 }
